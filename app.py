@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
 import uuid
 import re
+from collections import Counter
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -563,142 +564,142 @@ def api_upload_cats():
         return jsonify({'success': False, 'error': 'Upload failed'}), 500
 
 # 添加识别功能的路由
-@app.route('/api/recognize_cats', methods=['POST'])
-def api_recognize_cats():
-    """识别猫咪图片（仅返回识别结果，不写入数据库）"""
-    try:
-        if 'files' not in request.files:
-            return jsonify({'success': False, 'error': 'No files provided'}), 400
-        
-        files = request.files.getlist('files')
-        if not files or all(f.filename == '' for f in files):
-            return jsonify({'success': False, 'error': 'No files selected'}), 400
-            
-        # 创建临时目录
-        tmp_dir = os.path.join(UPLOAD_FOLDER, 'tmp')
-        os.makedirs(tmp_dir, exist_ok=True)
-        
-        recognized_results = []
-        failed_files = []
-        
-        for file in files:
-            if file and file.filename:
-                # 检查文件类型
-                if not allowed_file(file.filename):
-                    failed_files.append({
-                        'filename': file.filename,
-                        'error': 'File type not allowed'
-                    })
-                    continue
-                
-                # 生成唯一文件名
-                file_id = str(uuid.uuid4())
-                filename = secure_filename(file.filename)
-                file_ext = os.path.splitext(filename)[1].lower()
-                if not file_ext:
-                    file_ext = '.jpg'
-                
-                temp_filename = f"{file_id}{file_ext}"
-                temp_path = os.path.join(tmp_dir, temp_filename)
-                
-                try:
-                    # 保存到临时目录
-                    file.save(temp_path)
-                    
-                    # 调用识别服务
-                    recognized_name = recognize_cat(temp_path)
-                    
-                    if recognized_name:
-                        # 识别成功，只返回结果，不写入数据库
-                        recognized_results.append({
-                            'filename': filename,
-                            'cat_name': recognized_name,
-                            'confidence': 'high'  # 可以后续扩展置信度
-                        })
-                        
-                        logger.info(f"Recognized cat: {filename} -> {recognized_name}")
-                        
-                    else:
-                        # 识别失败
-                        failed_files.append({
-                            'filename': filename,
-                            'error': 'Recognition failed'
-                        })
-                    
-                    # 删除临时文件
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
-                        
-                except Exception as e:
-                    # 删除临时文件
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
-                    failed_files.append({
-                        'filename': filename,
-                        'error': f'Processing error: {str(e)}'
-                    })
-                    logger.error(f"Recognition error for {filename}: {e}")
-        
-        if recognized_results:
-            # 如果有多个文件，返回最常见的识别结果
-            cat_names = [result['cat_name'] for result in recognized_results]
-            # 统计最常见的猫咪名字
-            from collections import Counter
-            most_common_name = Counter(cat_names).most_common(1)[0][0]
-            
-            return jsonify({
-                'success': True,
-                'message': f'Successfully recognized {len(recognized_results)} images',
-                'recognized_count': len(recognized_results),
-                'failed_count': len(failed_files),
-                'suggested_name': most_common_name,  # 建议的猫咪名字
-                'recognition_results': recognized_results,
-                'failed_files': failed_files
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'No cats were recognized',
-                'failed_files': failed_files
-            }), 400
-            
-    except Exception as e:
-        logger.error(f"Recognition error: {e}")
-        return jsonify({'success': False, 'error': 'Recognition failed'}), 500
+# --- 1. 修改调用AI服务器的函数 ---
 
 def recognize_cat(image_path):
-    """调用识别服务器识别猫咪"""
+    """
+    调用AI识别服务器来识别猫咪。
+    返回一个包含详细识别结果的字典，如果失败则返回None。
+    """
+    # AI识别服务器的地址
+    RECOGNITION_SERVER_URL = "http://localhost:2255/recognize"
+
     try:
-        # 识别服务器地址
-        RECOGNITION_SERVER = "http://localhost:2255/recognize"
-        
-        # 准备文件上传
         with open(image_path, 'rb') as f:
             files = {'image': f}
-            
-            # 发送请求，不设置超时或设置很长的超时
+
+            # 发送请求到AI服务器，设置一个合理的超时
             response = requests.post(
-                RECOGNITION_SERVER,
+                RECOGNITION_SERVER_URL,
                 files=files,
-                timeout=None  # 不设置超时
+                timeout=30  # 设置30秒超时，防止无限等待
             )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('success') and result.get('cat_name'):
-                    return result['cat_name']
-            elif response.status_code == 404:
-                # 服务器返回 notfound
-                return None
-                    
-        return None
-        
-    except requests.exceptions.ConnectionError:
-        logger.error("Cannot connect to recognition service")
-        return None
+
+            response.raise_for_status()  # 如果状态码不是2xx，则抛出异常
+
+            result = response.json()
+            if result.get('success'):
+                # 成功时，返回整个 'data' 对象
+                return result.get('data')
+            else:
+                # AI服务器返回了 'success': False
+                logger.warning(f"AI服务器识别失败: {result.get('error')}")
+                return {'error': result.get('error', 'unknown_ai_error')}
+
+    except requests.exceptions.Timeout:
+        logger.error("连接AI识别服务超时。")
+        return {'error': 'ai_server_timeout'}
+    except requests.exceptions.RequestException as e:
+        logger.error(f"连接AI识别服务时发生错误: {e}")
+        return {'error': 'ai_server_connection_error'}
     except Exception as e:
-        logger.error(f"Recognition service error: {e}")
-        return None
+        logger.error(f"处理AI服务响应时发生未知错误: {e}")
+        return {'error': 'unknown_processing_error'}
+
+
+# --- 2. 修改主API端点以处理新的返回结构 ---
+
+@app.route('/api/recognize_cats', methods=['POST'])
+def api_recognize_cats():
+    """识别多张猫咪图片（仅返回识别结果，不写入数据库）"""
+    if 'files' not in request.files:
+        return jsonify({'success': False, 'error': 'No files provided'}), 400
+
+    files = request.files.getlist('files')
+    if not files or all(f.filename == '' for f in files):
+        return jsonify({'success': False, 'error': 'No files selected'}), 400
+
+    tmp_dir = os.path.join(UPLOAD_FOLDER, 'tmp', str(uuid.uuid4()))
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    recognition_results = []
+    failed_files = []
+
+    for file in files:
+        if not (file and file.filename and allowed_file(file.filename)):
+            failed_files.append({'filename': file.filename, 'error': 'Invalid file or file type'})
+            continue
+
+        filename = secure_filename(file.filename)
+        temp_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{os.path.splitext(filename)[1].lower()}")
+
+        try:
+            file.save(temp_path)
+
+            # 调用更新后的识别函数
+            ai_result = recognize_cat(temp_path)
+
+            if ai_result and not ai_result.get('error'):
+                # AI服务器成功返回了识别数据
+                recognition_results.append({
+                    'filename': filename,
+                    'status': ai_result.get('status'),  # 'matched' or 'unmatched'
+                    'cat_name': ai_result.get('cat_name'),  # "Garfield" or "待定 (Unknown)"
+                    'similarity': ai_result.get('similarity'),  # 相似度得分
+                    'message': ai_result.get('message')  # AI服务器给出的提示信息
+                })
+                logger.info(
+                    f"AI识别成功: {filename} -> {ai_result.get('cat_name')} (Sim: {ai_result.get('similarity')})")
+            else:
+                # 识别失败 (连接失败、AI服务器出错或未检测到猫脸等)
+                error_message = ai_result.get('error', 'Recognition failed') if ai_result else 'Recognition failed'
+                failed_files.append({
+                    'filename': filename,
+                    'error': error_message
+                })
+                logger.warning(f"AI识别失败: {filename}, 原因: {error_message}")
+
+        except Exception as e:
+            failed_files.append({'filename': filename, 'error': f'Processing error: {str(e)}'})
+            logger.error(f"处理文件 {filename} 时发生错误: {e}", exc_info=True)
+        finally:
+            # 确保临时文件被删除
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # 清理临时目录
+    try:
+        if os.path.exists(tmp_dir):
+            os.rmdir(tmp_dir)
+    except OSError:
+        pass  # 如果目录非空（说明有其他并行进程），则不删除
+
+    if not recognition_results and not failed_files:
+        return jsonify({'success': False, 'error': 'No valid files processed'}), 400
+
+    # --- 汇总结果 ---
+    # 新的汇总逻辑：只对成功匹配的猫进行统计
+    # 我们只认为 status == 'matched' 的是确认的猫
+    matched_cat_names = [
+        res['cat_name'] for res in recognition_results if res.get('status') == 'matched'
+    ]
+
+    suggested_name = None
+    if matched_cat_names:
+        # 统计最常见的已匹配猫咪名字
+        most_common = Counter(matched_cat_names).most_common(1)
+        if most_common:
+            suggested_name = most_common[0][0]
+
+    return jsonify({
+        'success': True,
+        'message': f'Processed {len(files)} files.',
+        'recognized_count': len(recognition_results),
+        'failed_count': len(failed_files),
+        'suggested_name': suggested_name,  # 建议的猫咪名字 (可能为 None)
+        'recognition_results': recognition_results,
+        'failed_files': failed_files
+    })
 
 if __name__ == '__main__':
     # 初始化数据库
