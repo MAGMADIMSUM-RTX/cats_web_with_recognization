@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}🐱 猫咪相册{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <!-- 左侧侧边栏 -->
+        <div class="sidebar">
+            <a href="{{ url_for('home') }}" class="sidebar-btn {% if request.endpoint == 'home' %}active{% endif %}">
+                <div class="icon">🏠</div>
+                <div class="label">主页</div>
+            </a>
+            <a href="{{ url_for('search') }}" class="sidebar-btn {% if request.endpoint == 'search' %}active{% endif %}">
+                <div class="icon">🔍</div>
+                <div class="label">搜索</div>
+            </a>
+            <a href="{{ url_for('recent') }}" class="sidebar-btn {% if request.endpoint == 'recent' %}active{% endif %}">
+                <div class="icon">🆕</div>
+                <div class="label">最近</div>
+            </a>
+            <a href="{{ url_for('favorites') }}" class="sidebar-btn {% if request.endpoint == 'favorites' %}active{% endif %}">
+                <div class="icon">😽</div>
+                <div class="label">我的</div>
+            </a>
+            <!-- 上传按钮在JS中处理，以显示/隐藏上传区域 -->
+            <button class="sidebar-btn" id="upload-btn-nav">
+                <div class="icon">📤</div>
+                <div class="label">上传</div>
+            </button>
+        </div>
+
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            {% block content %}{% endblock %}
+        </div>
+
+        <!-- 右侧侧边栏 -->
+        <div class="right-sidebar" id="right-sidebar">
+            <h3>🔥 近期热门</h3>
+            <div class="hot-photos" id="hot-photos">
+                <!-- 热门照片将通过JavaScript动态加载 -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- 图片放大模态框 -->
+    <div class="modal-overlay" id="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <img class="modal-image" id="modal-image" src="" alt="放大的猫咪图片">
+            <button class="modal-close" id="modal-close">✕</button>
+            <div class="modal-actions">
+                <button class="modal-save-btn" id="modal-save-btn">💖 保存到收藏</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知提示 -->
+    <div id="notification-container"></div>
+
+    <script src="{{ url_for('static', filename='js/nav.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/image-modal.js') }}"></script>
+    <script>
+        // 加载右侧侧边栏的热门照片
+        document.addEventListener('DOMContentLoaded', function() {
+            const hotPhotos = document.getElementById('hot-photos');
+            const rightSidebar = document.getElementById('right-sidebar');
+            
+            // 只在主页显示右侧侧边栏
+            if (window.location.pathname === '/') {
+                rightSidebar.style.display = 'block';
+                
+                // 加载收藏的照片作为热门照片
+                async function loadHotPhotos() {
+                    try {
+                        const response = await fetch('/api/favorites');
+                        const data = await response.json();
+                        
+                        if (data.success && data.favorites.length > 0) {
+                            hotPhotos.innerHTML = '';
+                            // 只显示最近的3张收藏照片
+                            const recentFavorites = data.favorites.slice(0, 3);
+                            
+                            recentFavorites.forEach(favorite => {
+                                const photoItem = document.createElement('div');
+                                photoItem.className = 'hot-photo-item';
+                                
+                                const img = document.createElement('img');
+                                img.src = favorite.url;
+                                img.alt = '收藏的猫咪';
+                                
+                                // 从URL中提取猫咪名字
+                                const urlParts = favorite.url.split('/');
+                                const catName = urlParts[urlParts.length - 2] || '未知';
+                                
+                                const photoName = document.createElement('div');
+                                photoName.className = 'photo-name';
+                                photoName.textContent = decodeURIComponent(catName);
+                                
+                                const photoActions = document.createElement('div');
+                                photoActions.className = 'photo-actions';
+                                
+                                const likedBtn = document.createElement('button');
+                                likedBtn.className = 'like-btn liked';
+                                likedBtn.innerHTML = '✅ 已收藏';
+                                likedBtn.disabled = true;
+                                
+                                photoActions.appendChild(likedBtn);
+                                photoItem.appendChild(img);
+                                photoItem.appendChild(photoName);
+                                photoItem.appendChild(photoActions);
+                                
+                                // 点击图片跳转到收藏页面
+                                img.onclick = () => {
+                                    window.location.href = '/favorites';
+                                };
+                                
+                                hotPhotos.appendChild(photoItem);
+                            });
+                        } else {
+                            hotPhotos.innerHTML = '<p style="color: #666; font-size: 12px; text-align: center;">暂无收藏</p>';
+                        }
+                    } catch (error) {
+                        console.error('加载热门照片失败:', error);
+                        hotPhotos.innerHTML = '<p style="color: #666; font-size: 12px; text-align: center;">加载失败</p>';
+                    }
+                }
+                
+                loadHotPhotos();
+            } else {
+                // 在非主页隐藏右侧侧边栏
+                rightSidebar.style.display = 'none';
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

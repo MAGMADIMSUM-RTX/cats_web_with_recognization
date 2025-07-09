@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}最近上传 - 猫咪相册{% endblock %}
+
+{% block content %}
+<div id="title">
+    <h1>🆕 最近上传</h1>
+</div>
+<div id="cat-gallery" class="gallery">
+    <!-- 最近上传的猫咪图片将在这里显示 -->
+</div>
+<div id="loading" class="loading-indicator">正在加载...</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/recent.js') }}"></script>
+{% endblock %}

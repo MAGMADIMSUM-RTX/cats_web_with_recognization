@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}搜索 - 猫咪相册{% endblock %}
+
+{% block content %}
+<div id="title">
+    <h1>🔍 搜索猫咪</h1>
+</div>
+<div class="search-container">
+    <input type="text" id="search-input" placeholder="输入猫咪的名字...">
+    <button id="search-button">搜索</button>
+</div>
+<div id="search-results" class="gallery">
+    <!-- 搜索结果将在这里显示 -->
+</div>
+<div id="search-message" class="message-indicator"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/search.js') }}"></script>
+{% endblock %}

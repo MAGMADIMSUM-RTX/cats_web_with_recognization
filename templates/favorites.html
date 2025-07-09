@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}我的收藏 - 猫咪相册{% endblock %}
+
+{% block content %}
+<div id="title">
+    <h1>😽 我的收藏</h1>
+</div>
+<div id="favorites-gallery" class="gallery">
+    <!-- 收藏的猫咪图片将在这里显示 -->
+</div>
+<div id="loading" class="loading-indicator">正在加载...</div>
+
+<!-- 空状态 -->
+<div class="no-favorites" id="no-favorites" style="display: none;">
+    <p>还没有收藏任何猫咪！快去保存一些可爱的猫咪吧！🐱</p>
+</div>
+
+<!-- 错误消息 -->
+<div id="error-message" class="error-message" style="display: none;">
+    <p>❌ 加载收藏失败</p>
+    <button id="retry-btn">� 重试</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/favorites.js') }}"></script>
+{% endblock %}
